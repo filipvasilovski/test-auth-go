@@ -1,0 +1,61 @@
+stages:
+  - deploy
+
+.deploy_go:
+  stage: deploy
+  script:
+    - rm -rf $APP_PATH/*
+    - mkdir -p $APP_PATH
+    - cp -R * $APP_PATH/
+    - cd $APP_PATH/
+    - touch .env
+    - echo "PORT=$PORT" >> .env
+    - echo "JWT_SECRET=$JWT_SECRET" >> .env
+    - echo "EMAIL=$EMAIL" >> .env
+    - echo "PASSWORD=$PASSWORD" >> .env
+    - echo "TC_CODE=$TC_CODE" >> .env
+    - go build -o ./bin/main ./cmd/api
+
+    # Create systemd service file
+    - |
+      echo "[Unit]
+      Description=Admin API Service
+      After=network.target
+
+      [Service]
+      WorkingDirectory=$APP_PATH
+      ExecStart=$APP_PATH/bin/main
+      Restart=always
+      Environment=PORT=$PORT
+      Environment=JWT_SECRET=$JWT_SECRET
+      Environment=PASSWORD=$PASSWORD
+      User=www-data
+      Group=www-data
+
+      [Install]
+      WantedBy=multi-user.target" | sudo tee /etc/systemd/system/admin-api.service
+
+    # Reload systemd and restart the service
+    - sudo systemctl daemon-reload
+    - sudo systemctl restart admin-api.service
+  only:
+    - main
+  when: manual
+  allow_failure: false
+
+deploy_go_prod:
+  extends: .deploy_go
+  tags:
+    - fake-admin
+    - prod
+  variables:
+    APP_PATH: /var/www/admin-api.testerschallenge.com
+    PORT: ':1337'
+    # TODO: Move out, not good
+    JWT_SECRET: 'f6133a48d4579d581ff71372b2989c6f'
+    EMAIL: $EMAIL
+    PASSWORD: $PASSWORD
+    TC_CODE: $TC_CODE
+  environment:
+    name: production
+    url: https://admin-api.testerschallenge.com
